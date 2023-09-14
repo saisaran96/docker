@@ -1,4 +1,4 @@
-version: '2'
+version: '3'
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
@@ -21,3 +21,51 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  
+  schema-registry:
+    image: confluentinc/cp-schema-registry:latest
+    environment:
+      - SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL=zookeeper:2181
+      - SCHEMA_REGISTRY_HOST_NAME=schema-registry
+      - SCHEMA_REGISTRY_LISTENERS=http://schema-registry:8081,http://localhost:8081
+      - SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=kafka:9092
+    ports:
+      - 8081:8081
+    depends_on: [zookeeper, kafka]
+
+  kafka_manager:
+    image: hlebalbau/kafka-manager:stable
+    restart: always
+    ports:
+      - "9000:9000"
+    depends_on:
+      - zookeeper
+      - kafka
+    environment:
+      ZK_HOSTS: "zookeeper:2181"
+      APPLICATION_SECRET: "random-secret"
+    command: -Dpidfile.path=/dev/null
+  
+  postgres:
+    image: debezium/postgres:15
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=hasura
+      - POSTGRES_PASSWORD=hasura
+      - POSTGRES_DB=streaming
+  
+  debezium:
+    image: debezium/connect:latest
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+    depends_on: [kafka]
+    ports:
+      - 8083:8083
